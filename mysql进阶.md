@@ -1,0 +1,417 @@
+## Mysql进阶
+
+### 编码设置
+
+#### 服务器编码
+
+> `show variables like 'character%'`	
+
+​	查询所有跟字符集有关变量(session会话变量)
+
+```shell
++--------------------------+--------------------------+
+| Variable_name            | Value                    |
++--------------------------+--------------------------+
+| character_set_client     | utf8                     |
+| character_set_connection | utf8                     |
+| character_set_database   | utf8                     |
+| character_set_filesystem | binary                   |
+| character_set_results    | utf8                     |
+| character_set_server     | utf8                     |
+| character_set_system     | utf8                     |
+| character_sets_dir       | F:\mysql\share\charsets\ |
++--------------------------+--------------------------+
+```
+
+> `set names '字符集'`  
+
+​	设置与client有关的字符集变量：`character_set_client` 、`character_set_connection`、`character_set_results`
+
+> 修改 `my.ini` 文件
+
+#### 数据库表编码
+
+> `shwo create table 表名 `	
+
+​	查看建表语句，来查看表编码
+
+```sql
+CREATE TABLE `表名` (
+  `id` varchar(32) NOT NULL,
+  ........
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8
+```
+
+> `alter table 表名 character set 字符集`	
+
+​	更改表字符集编码
+
+#### 数据列编码
+
+> `alter table  表名  change  原列名  修改后列名  数据类型  character  set  字符集 约束`
+
+​	修改单个字段列的编码
+
+e.g:	`alter table emp change emp_name empName varchar(50) charcater set utf8 not null`
+
+> `alter table 表名 convert to character set 字符集;  `
+
+​	修改表中所有字段列的编码
+
+#### 修改多张表的编码
+
+​	对于多张表编码的修改，都是以所在数据库为整体修改
+
+1、导出所有表结构
+
+> `mysqldump -uroot -p --default-character-set=字符集 -d 数据库名  > 路径/建表.sql`
+
+2、将数据库的数据导出
+
+> `mysqldump -uroot -p --quick  --no-create-info --extended-insert --default-character-set=字符集 数据库名 > 路径/数据.sql`
+
+3、删除原有数据库
+
+> `drop database 数据库`
+
+4、重新以新的编码格式创建数据库
+
+> 建数据库：`create database 数据库名 default charset 字符集`
+>
+> 导入建表：`mysql -uroot -p 数据库名 < 路径/建表.sql`
+>
+> 修改数据：在数据.sql加入	`set names '字符集'`，让插入数据都以该字符集编码插入
+>
+> 导入数据：`mysql -uroot -p 数据库名 < 路径/数据.sql`
+
+### 变量
+
+#### 会话变量
+
+> `show session variables `  
+
+​	查看所有会话级变量
+
+> `show session variables like 'auto%' `  | `show variables like 'auto%'`
+
+​	模糊查询
+
+> `select @@session.变量名`
+
+​	查询
+
+> `set 变量名='值'`	| `set @@session.变量名='值'`
+
+​	设置指定会话变量值
+
+#### 全局变量
+
+> `show global variables `  
+
+​	查看所有全局变量
+
+> `show global variables like 'auto%' ` 
+
+​	模糊查询
+
+> `select @@global.变量名`
+
+​	查询
+
+> `set global 变量名='值' `	| `set @@global .变量名='值'`
+
+​	设置指定全局变量值
+
+#### 局部变量
+
+​	用于存储过程，作用范围在begin到end语句块之间 
+
+> `declare 变量名  数据类型 default 默认值`
+
+​	声明变量
+
+> `select 变量名='值'`
+
+​	设值
+
+#### 用户变量 
+
+> `set @变量名='值'`
+
+​	变量设置
+
+### 存储过程
+
+#### 创建
+
+1、选中数据库
+
+2、改变分隔符
+
+​	默认为   	`;`，通过	`delimiter 分隔符` 修改分隔符
+
+```shell
+delimiter $
+```
+
+3、存储语句
+
+```sql
+create procedure 存储名()
+begin
+	select version();
+	.............
+end
+$
+```
+
+4、还原分隔符
+
+5、调用存储过程
+
+```shell
+call 存储名；
+```
+
+#### 参数
+
+**in（输入参数）**
+
+​	不会修改传入的变量的值，而是将原变量的值赋值给该in参数
+
+```shell
+mysql> set @p = 1;  #设置用户变量
+mysql> delimiter $
+mysql> create procedure lov(in p_1 int )	#in参数
+    -> begin
+    -> set p_1 = 2;
+    -> select p_1;
+    -> end
+    -> $
+mysql> delimiter ;
+mysql> call lov(@p);	#存储过程调用
++------+
+| p_1  |
++------+
+|    2 |
++------+
+mysql> select @p;	#原始用户变量
++------+
+| @p   |
++------+
+|    1 |
++------+
+```
+
+**out（输出参数）**
+
+​	对于传入的变量，都会重置为null，参数的值会影响原变量
+
+```shell
+mysql> create procedure lov(out p_o int)
+    -> begin
+    -> select p_o;
+    -> end
+    -> $
+mysql> set @p=1;
+mysql> call lov(@p);
++------+
+| p_o  |
++------+
+| NULL |
++------+
+mysql> select @p$
++------+
+| @p   |
++------+
+| NULL |
++------+
+```
+
+**inout（输入输出参数）**
+
+​	in与out的结合，相当于函数中按址传参
+
+```shell
+mysql> create procedure lov(inout p_io int)
+    -> begin
+    -> select p_io;
+    -> set p_io=2;
+    -> end
+    -> $
+mysql> set @p=1;
+mysql> call lov(@p);
++------+
+| p_o  |
++------+
+|  1   |
++------+
+mysql> select @p$
++------+
+| @p   |
++------+
+|  2   |
++------+
+```
+
+#### 流程控制
+
+> `if ... else  ...  end if; `      ,    `if ...then ...elseif ... then...else ... end if;`
+
+>`case ... when ... then... else ...end case;`
+
+> `while ... do ... end while;`
+
+>`repeat ... until ... end repeat;`
+
+>`loop_name : loop ... if ... then leave loop_name; end if; end loop;`
+
+```sql
+create procedure lov()
+begin 
+	declare uname VARCHAR(50) default 'lov';
+	declare age INT default 20;
+	declare salary int default 2000;
+	WHILE age < 40 do 
+		set age = age + 1;
+		set salary = salary +111;
+		case salary 
+			when 2111
+			then 
+				set salary = salary *2;
+				insert into user (name,age,salary) VALUE (uname,age,salary);
+				set salary = salary/2;
+			else 
+				set uname = 'lov2';
+				insert into user (name,age,salary) VALUE (uname,age,salary);
+		end case; 
+		
+	end while;
+end
+```
+
+#### 定义条件与处理
+
+​	条件定义和处理用于定义在过程执行中遇到问题时的相应处理
+
+> `declare continue handler for sqlstate '错误代码' set 变量=变量值`
+
+```shell
+mysql> create procedure lov()
+    -> begin
+    -> insert into user value (61,'lov',20,20000);
+    -> insert into user value (1,'lov',20,20000);
+    -> end
+    -> $
+Query OK, 0 rows affected (0.00 sec)
+mysql> call lov()$
+ERROR 1062 (23000): Duplicate entry '61' for key 'PRIMARY' #23000为错误代码
+---------------------------------------------------------------------------
+#处理错误代码行，并继续执行之后的语句
+mysql> create procedure lov()
+    -> begin
+    -> declare continue handler for sqlstate '23000' set @x = 23000； 
+    -> insert into user value (61,'lov',20,20000);
+    -> insert into user value (2,'lov',20,20000);
+    -> end
+    -> $
+mysql> call lov()$
+Query OK, 1 row affected (0.05 sec)
+```
+
+#### 管理
+
+> `show procedure status where db='数据库名'`
+
+​	显示该数据库中所有存储过程信息
+
+> `select specific_name from mysql.proc`   --where specific_name = '存储过程名'
+
+​	选出现有存储过程名 （具体查询）
+
+> `select 存储过程名,body from mysql.proc`   |   `show create procedure 存储过程名`
+
+​	查询存储过程内容
+
+> `drop procedure  存储过程名 `  |   `drop procedure if exists 存储过程名`
+
+​	删除存储过程
+
+> `alter procedure ........`
+
+​	修改具体参数，参照mysql官方文档
+
+### 函数创建
+
+1、查看是否开启创建函数功能
+
+```shell
+mysql> show variables like '%fun%';	
++---------------------------------+-------+
+| Variable_name                   | Value |
++---------------------------------+-------+
+| log_bin_trust_function_creators | OFF   |		#为开启创建函数功能
++---------------------------------+-------+
+mysql> set global  log_bin_trust_function_creators = 1; #开启
+```
+
+2、创建函数语法
+
+```shell
+create function 函数名 (变量,...)
+returns 数据类型
+begin 
+	......
+	return 数据;
+end;
+---------------------------------------------demo
+mysql> delimiter $
+mysql> create function fun_add(a int,b int)
+    -> returns int
+    -> begin
+    -> return a+b;
+    -> end;
+    -> $
+```
+
+> `show create function 方法名`
+
+> `drop function  if exists 方法名`
+
+### 视图
+
+### 触发器
+
+### My ISAM表锁
+
+### 事物
+
+### 慢查询
+
+### 索引
+
+### 表优化
+
+### 表分区
+
+### mysql优化
+
+---
+
+## Navicat for MySQL快捷键
+
+>1. **ctrl+q            打开查询窗口**  
+>2. **ctrl+/            注释sql语句**  
+>3. **ctrl+shift +/     解除注释**  
+>4. **ctrl+r            运行查询窗口的sql语句**  
+>5. **ctrl+shift+r      只运行选中的sql语句**  
+>6. **F6                打开一个mysql命令行窗口**  
+>7. **ctrl+d           （1）：查看表结构详情，包括索引 触发器，存储过程，外键，唯一键;（2）：复制一行**  
+>8. **ctrl+l            删除一行**  
+>9. **ctrl+n            打开一个新的查询窗口**  
+>10. **ctrl+w            关闭一个查询窗口**  
+>11. **ctrl+tab          多窗口切换** 
+
+
+
