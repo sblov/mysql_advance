@@ -342,7 +342,9 @@ Query OK, 1 row affected (0.05 sec)
 
 ​	修改具体参数，参照mysql官方文档
 
-### 函数创建
+### 函数
+
+#### 创建
 
 1、查看是否开启创建函数功能
 
@@ -375,11 +377,95 @@ mysql> create function fun_add(a int,b int)
     -> $
 ```
 
+#### 管理
+
 > `show create function 方法名`
 
-> `drop function  if exists 方法名`
+> `eeeedrop function  if exists 方法名`
 
 ### 视图
+
+​	由查询结果形成的一张虚拟表
+
+#### 优势
+
+> 简化查询语句
+
+> 进行权限控制
+
+> 分表
+
+#### 创建
+
+```sql
+CREATE
+    [OR REPLACE]
+    [ALGORITHM = {UNDEFINED | MERGE | TEMPTABLE}]
+    --Merge：合并的执行方式，每当执行的时候，先将视图的sql语句与外部查询视图的sql语句，混合到一起，最终执行
+    --TempTable：临时表模式，每当查询的时候，将视图所使用的select语句生成一个结果的临时表，再在当前的临时表内进行查询
+    --undefined：mysql将选择所要使用的算法，但一般倾向于merge，因为merge更有效，如果使用临时表，视图则不可更新
+    [DEFINER = { user | CURRENT_USER }]
+    [SQL SECURITY { DEFINER | INVOKER }]
+    VIEW view_name [(column_list)]
+    AS select_statement
+    [WITH [CASCADED | LOCAL] CHECK OPTION]
+    --with check option:更新视图的数据时，必须满足视图的条件，满足之后才能更新到基表中：如视图时查询基表某范围的值，而对视图的更新，只有更新该范围的值才会对基表中的数据进行更新，否则不会对基表中数据产生影响
+```
+
+```sql
+create view v_dept as select * from department;
+```
+
+#### 管理
+
+> ` select * from information_schema.views where TABLE_NAME = '视图名'\G;`
+
+​	视图都存放在information_schema数据库的views表里，通过该sql查询该视图的具体内容，或在视图所在数据库下通过`show tables` 查询是否包含该视图
+
+```shell
+       TABLE_CATALOG: def
+        TABLE_SCHEMA: lov
+          TABLE_NAME: v_dept
+     VIEW_DEFINITION: select `lov`.`department`.`id` AS `id`,`lov`.`department`.`department_name` AS `department_name` from `lov`.`department`
+        CHECK_OPTION: NONE
+        IS_UPDATABLE: YES
+             DEFINER: root@localhost
+       SECURITY_TYPE: DEFINER
+CHARACTER_SET_CLIENT: utf8
+COLLATION_CONNECTION: utf8_general_ci
+```
+
+> `show table status [from 视图名称][like '匹配']`	
+
+​	查看视图的定义（[]为可选）
+
+> `select drop_priv from mysql.user where user='root'`
+
+​	查看是否有删除权限
+
+> `drop view if exists 试图名`
+
+​	删除视图，多个视图直接    `,`分割
+
+#### 视图更新
+
+​	某些视图是可更新的，可以在update、delete、inert等语句中使用，以更新基表的内容。对于可更新的视图，在视图的行和基表中的行之间必须具有一对一的关系。还有一特定的其他结构，这类结构会使视图不可更新：
+
+```sql
+聚合函数（SUM(),MIN()...)
+DISTINCT
+GROUP BY
+HAVING
+UNION
+位于选择列表中的子查询
+JOIN
+FROM 子句中的不可更新视图
+WHERE子句中的子查询，引用FROM子句中的表
+仅引用文字值
+ALGORITHM = TEMPTABLE
+```
+
+
 
 ### 触发器
 
