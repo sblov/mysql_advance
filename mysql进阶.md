@@ -449,7 +449,9 @@ COLLATION_CONNECTION: utf8_general_ci
 
 #### 视图更新
 
-​	某些视图是可更新的，可以在update、delete、inert等语句中使用，以更新基表的内容。对于可更新的视图，在视图的行和基表中的行之间必须具有一对一的关系。还有一特定的其他结构，这类结构会使视图不可更新：
+​	某些视图是可更新的，可以在update、delete、inert等语句中使用，以更新基表的内容。对于可更新的视图，在视图的行和基表中的行之间必须具有一对一的关系。
+
+​	还有一特定的其他结构，这类结构会使视图不可更新：
 
 ```sql
 聚合函数（SUM(),MIN()...)
@@ -465,15 +467,319 @@ WHERE子句中的子查询，引用FROM子句中的表
 ALGORITHM = TEMPTABLE
 ```
 
-
-
 ### 触发器
+
+​	触发器是一种特殊的存储过程，它在插入，删除或修改特定表中的数据时触发执行，它比数据库本身标准的功能有更精细和更复杂的数据控制能力
+
+​	触发器有数据库主动去执行，不能被直接调用
+
+> 监视地点：一般为表名
+
+> 监视事件：update/dalete/insert
+
+> 触发时间：after/before
+
+> 触发事件：update/delete/insert
+
+#### 创建
+
+```sql
+CREATE
+    [DEFINER = { user | CURRENT_USER }]
+    TRIGGER trigger_name
+    trigger_time trigger_event
+    ON tbl_name FOR EACH ROW
+    [trigger_order]
+    trigger_body
+
+--trigger_time: { BEFORE | AFTER }
+
+--trigger_event: { INSERT | UPDATE | DELETE }
+--对于insert：新插入的行可以用new来表示，行中的某列可以通过‘new.列名’ 来表示
+--对于delete:被删除的一行，可以用old来引用，‘old.列名’ 表示某列
+--对于update：update前的数据用old，update后的数据用new
+
+--trigger_order: { FOLLOWS | PRECEDES } other_trigger_name
+```
+
+INSERT：
+
+```sql
+CREATE TRIGGER tr_insertDept AFTER INSERT ON department FOR EACH ROW
+BEGIN
+	INSERT test ( dept_id, COMMIT )
+VALUES
+	( new.id, 'new add' );
+END;
+```
+
+UPDATE：
+
+```sql
+CREATE TRIGGER tr_updateDept AFTER UPDATE ON department FOR EACH ROW
+BEGIN
+	UPDATE test 
+	SET COMMIT = new.department_name 
+WHERE
+	dept_id = old.id;
+END;
+```
+
+#### 管理
+
+> `show triggers`
+
+​	查看当前数据库中所有触发器
+
+> `desc information_schema.TRIGGERS`
+
+​	information_schema.TRIGGERS表中，存储所有库中的触发器
+
+> `select * from information_schema.TRIGGERS where TRIGGER_NAME='trigger_name' `
+
+​	查询触发器
+
+> `drop trigger [schema_name.]trigger_name`
+
+​	删除
 
 ### My ISAM表锁
 
-### 事物
+​	**mysql锁的机制比较简单，其最显著的特点就是不同的存储引擎支持不同的锁机制。如：myISAM和MEMORY存储引擎采用的是表级锁；BDB存储引擎采用的页面锁，但也支持表级锁；InnoDB存储引擎既支持行级锁，也支持表级锁，但默认情况采用行级锁**
+
+​	MySQL三种锁的特效：开销、加锁速度、死锁、粒度、并发性能
+
+> **表级锁：**开销小、加锁快；不会出现死锁；锁定粒度大，发生冲突的概率最高、并发度最低
+>
+> **行级锁：**开销大、加锁慢；会出现死锁；锁定粒度最小，发生锁冲突的概率最低、并发度也最高
+>
+> **页面锁：** 开销和加锁时间介于表锁和行锁之间；会出现死锁；锁定粒度介于表锁与行锁之间、并发度一般
+
+​	仅从锁的角度来看：
+
+​	***表级锁更适合于以查询为主，只有少量按索引条件更新数据的应用（web应用）***
+
+​	***行级锁则更适合于大量按索引条件并发更新少量不同数据，同时又有并发查询的应用***
+
+#### 表锁
+
+​	mysql表级锁有两种模式：表共享读锁（table read lock）和表独占写锁（table write lock）
+
+​	==确保该表使用My ISAM存储引擎==
+
+> `lock table 表名 read `   
+
+​	加共享读锁
+
+> `lock table 表名 write`
+
+​	加表独占写锁
+
+> 追加   `,表名 read/write`  对多个表加锁
+
+*一个客户端加共享读锁，另一个客户端只能读取，不能修改（进入锁等待），需要当地该表的锁被释放（unlock）*
+
+![1548739643524](img\1548739643524.png)
+
+> 一个session使用LOCK TABLE命令给表A加了锁，这个session可以查询锁定表中的记录，但更新或访问其他表就会出现错误；
+>
+> `ERROR 1100 (HY000): Table '....' was not locked with LOCK TABLES`
+
+#### 并发插入
+
+​	My ISAM表的读和写是串行的，但这个是总体而言；在一定条件下，My ISAM表也支持查询和插入的并发执行
+
+​	My ISAM存储引擎有一个系统变量concurrent_insert，专门用来控制其并发插入的行为，其值为0、1、2
+
+> **0：**不允许并发插入
+>
+> **1：**如果My ISAM表中间没有被删除的行（空洞），My ISAM允许在一个进程读表的同时，另一个进程可以从表尾插入记录。mysql默认设置
+>
+> **2：**无论My ISAM表中有没有空洞，都允许在表尾并发插入
+
+```shell
+mysql> show variables like 'concurrent_insert';#查询变量
++-------------------+-------+
+| Variable_name     | Value |
++-------------------+-------+
+| concurrent_insert | AUTO  |
++-------------------+-------+
+mysql> set global concurrent_insert = 2; #变量更改
+mysql> lock table department read local; #给当前进程加锁
+mysql> insert into department(department_name) values ('adc');
+ERROR 1099 (HY000): Table 'department' was locked with a READ lock and can't be updated  # error
+#########另一个进程insert
+mysql> insert into department(department_name) values ('adc');
+Query OK, 1 row affected (0.00 sec)
+
+mysql> select * from department;
++----+-----------------+
+| id | department_name |
++----+-----------------+
+|  1 | AA1             |
+|  2 | BB              |
+|  3 | DDD             |
+|  4 | QQQ             |
+|  8 | XXX             |
+|  9 | adc             |
++----+-----------------+
+#############该进程再查询
+mysql> select * from department;
++----+-----------------+
+| id | department_name |
++----+-----------------+
+|  1 | AA1             |
+|  2 | BB              |
+|  3 | DDD             |
+|  4 | QQQ             |
+|  8 | XXX             |
++----+-----------------+
+```
+
+#### 写优于读
+
+> ​	当一个进程请求某My ISAM表的读锁，同时另一个进程也请求同一表的写锁，无论那个先请求，都是**写进程先获得锁**。
+>
+> ​	mysql中写请求比读更重要，My ISAM不适合有大量更新与查询操作，因为大量的更新会造成查询很难获得锁，从而一直阻塞
+
+​	*可通过  `set low_priority_updates = 1`，使该连接发出的更新请求优先级降低，对于insert，delete都可以通过该方式指定*
+
+### 事务
+
+> `shwo engines;`
+
+​	查询数据库下的存储引擎的支持情况
+
+```shell
+mysql> show engines \G;
+*************************** 1. row ***************************
+      Engine: InnoDB
+     Support: DEFAULT
+     Comment: Supports transactions, row-level locking, and foreign keys
+Transactions: YES  # 只有InnoDB支持事务
+          XA: YES
+  Savepoints: YES
+```
+
+> `show variables like '%storage_engine%';`
+
+​	查看mysql当前默认存储引擎
+
+> `show create table table_name`
+
+​	通过查看表创建语句查看表的存储引擎
+
+> `start transaction;`
+
+​	开启事务
+
+> `commit`
+
+​	事务提交
+
+> `set autocommit = 0`
+
+​	关闭事务自动提交，既开启事务后，没有commit，事务不会提交执行
+
+```shell
+mysql> select @@session.autocommit;
++----------------------+
+| @@session.autocommit |  #默认开启
++----------------------+
+|                    1 |
++----------------------+
+```
+
+> `commit and chain`
+
+​	表示提交事务后重新开启新的事务
+
+> `rollback and release`
+
+​	表示事务回滚之后断开和客户端连接
+
+> `savepoint point_name`
+
+​	可以通过rollback to point_name回滚到指定状态
+
+```shell
+mysql> start transaction;
+
+mysql> savepoint s1;
+
+mysql> insert department(department_name) values('UU');
+
+mysql> select * from department;
++----+-----------------+
+| id | department_name |
++----+-----------------+
+| 13 | UU              |
++----+-----------------+
+
+mysql> rollback to s1;  #回到s1点，在此commit会只执行到s1处
+mysql> select  * from department; 
+Empty set (0.00 sec)
+```
+
+***对于InnoDB锁，在加锁后，执行start transaction会造成一个隐式的unlock tables的执行***
 
 ### 慢查询
+
+​	mysql记录下查询超过指定时间的语句，将超过指定时间的sql语句查询称为慢查询
+
+> `show variables where variable_name = 'long_query_time'`
+
+​	查询最长查询时间
+
+> `show status like 'uptime'`
+
+​	当期数据库运行时间
+
+> `show status like 'com_Select'`
+
+​	select执行次数
+
+> `show status like 'connections'`
+
+​	连接数
+
+> `show global status like 'slow_queries'`
+
+​	慢查询数
+
+> `mysqld.exe --safe-mode --slow-query-log`
+
+​	开启安全模式和慢查询日志，日志保存位置为datadir配置的目录
+
+> `set @@global.slow_query_log=on`
+
+​	进入数据库后开启慢查询日志，开启后在对应目录会生成初始化log文件
+
+```shell
+mysql> set @@global.slow_query_log=on;
+
+mysql> show variables like 'slow%';
++---------------------+--------------------------------------------+
+| Variable_name       | Value                                      |
++---------------------+--------------------------------------------+
+| slow_launch_time    | 2                                          |
+| slow_query_log      | ON                                         |
+| slow_query_log_file | D:\mysql-5.7\data\PC-201812290617-slow.log |
++---------------------+--------------------------------------------+
+```
+
+#### 配置
+
+​	在配置文件中(my.ini)
+
+```shell
+slow-query-log=1  
+long_query_time = 5 
+slow-query-log-file=slow.log #系统默认为datadir配置的目录下的host_name-slow.log
+log-queries-not-using-indexes #没有使用索引的sql也会记录日志
+```
+
+​	***修改配置后重启服务***
 
 ### 索引
 
