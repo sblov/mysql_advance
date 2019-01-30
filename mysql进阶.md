@@ -783,6 +783,161 @@ log-queries-not-using-indexes #没有使用索引的sql也会记录日志
 
 ### 索引
 
+​	在关系型数据库中，索引是一种与表有关的数据结构，可以使对应表的sql语句执行更快
+
+#### 分类
+
+**主键索引**
+
+​	主键即为主键索引
+
+> `alter table 表名 add PRIMARY KEY  列名`
+
+​	添加主键索引
+
+**唯一索引**
+
+​	唯一索引所在的列可以为null值；不能为空字符串
+
+> `create unique index 索引名称 on 表名(列名)`
+
+​	创建唯一索引
+
+​	**通过在sql语句前添加 `explain` ，能得到该sql执行的具体效率等信息**
+
+```shell
+mysql> explain select id from user where id = 73 \G;
+*************************** 1. row ***************************
+           id: 1
+  select_type: SIMPLE
+        table: user
+   partitions: NULL
+         type: const
+possible_keys: PRIMARY
+          key: PRIMARY
+      key_len: 4
+          ref: const
+         rows: 1
+     filtered: 100.00
+        Extra: Using index
+```
+
+**全文索引**
+
+​	FULLTEXT索引，用于全文索引。只有MyISAM和InnoDB表类型支持FULLTEXT索引。只可以从char，varchar和text列中创建
+
+```sql
+CREATE TABLE articles (
+          id INT UNSIGNED AUTO_INCREMENT NOT NULL PRIMARY KEY,
+          title VARCHAR(200),
+          body TEXT,
+          FULLTEXT (title,body)  --FULLTEXT index
+        ) ENGINE=InnoDB;
+--use index
+SELECT * FROM articles
+        WHERE MATCH (title,body)
+        AGAINST ('database');
+```
+
+**普通索引**
+
+> `create index 索引名称 on 表名(列名)`
+
+​	创建普通索引
+
+#### 管理
+
+> `show keys from table_name`  	| 	`show index from table_name`
+
+​	查询索引
+
+> `alter table 表名 drop index 索引名称 `
+
+​	删除索引
+
+#### 原理
+
+​	通过二叉树对索引文件进行检索
+
+​	在创建表时，会创建三个文件（对应datadir配置的文件下）
+
+> **.frm ：**表示表的结构
+>
+> **.myd**：表示数据
+>
+> **.myi**：表示索引的文件，该文件在移动目录后会失效，而以上两个不会
+
+![](assets\1548856383924.png)
+
+​	**索引会导致insert、update、delete的效率**
+
+#### 应用
+
+> 1、快速查找符合where条件的记录（或查询的所以字段为索引字段）
+>
+> 2、快速确定候选集，若where条件使用了多个索引字段，则mysql会优先使用能使候选集规模最小的那个索引，以便尽快排除不符合条件的记录
+>
+> 3、如果表中存在几个字段构成的联合索引，则查找记录时，这个联合索引的最左前缀匹配字段也会被自动作为索引来加入查找
+>
+> ​	如：（a,b,c）构成联合索引，则（a，b）（a，b，c）（a）均作为索引
+>
+> 4、多表做join操作时会使用索引（如果参加join的字段在这些表中均建立了索引的话）
+>
+> 5、若某字段已建立索引，求该字段的max与min时会使用索引
+>
+> 6、对建立了索引的字段锁sort或group操作时，会使用索引
+
+#### Profile分析
+
+> `select @@have_profiling`
+
+​	查看是否支持	    `show profile`
+
+> `set profiling = 1`
+
+​	开启session级别profiling
+
+> `show profiles`
+
+​	查询queryID
+
+> `show profile for query queryID`
+
+​	查看执行过程
+
+```shell
+mysql> set profiling =1;
+mysql> select * from user;
+mysql> show profiles;
++----------+------------+--------------------+
+| Query_ID | Duration   | Query              |
++----------+------------+--------------------+
+|        1 | 0.00029350 | select * from user |
++----------+------------+--------------------+
+mysql> show profile for query 1; #根据每个阶段的运行时间选择优化
++----------------------+----------+
+| Status               | Duration |
++----------------------+----------+
+| starting             | 0.000054 |
+| checking permissions | 0.000007 |
+| Opening tables       | 0.000020 |
+| init                 | 0.000016 |
+| System lock          | 0.000007 |
+| optimizing           | 0.000003 |
+| statistics           | 0.000011 |
+| preparing            | 0.000010 |
+| executing            | 0.000002 |
+| Sending data         | 0.000078 |
+| end                  | 0.000004 |
+| query end            | 0.000005 |
+| closing tables       | 0.000006 |
+| freeing items        | 0.000059 |
+| cleaning up          | 0.000013 |
++----------------------+----------+
+```
+
+
+
 ### 表优化
 
 ### 表分区
