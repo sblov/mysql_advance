@@ -936,13 +936,130 @@ mysql> show profile for query 1; #根据每个阶段的运行时间选择优化
 +----------------------+----------+
 ```
 
-
-
-### 表优化
-
-### 表分区
-
 ### mysql优化
+
+#### 表优化
+
+> `analyze  [local | no_write_to_binlog ] table tb_name [,tbale_name] `
+
+​	分析表
+
+> `check table tb_name [,tb_name] [option]`
+
+​	检查表
+
+​	`check table`也可以检查视图是否有误，比如在视图定义中引用的表已不存在
+
+> `optimize [local | no_write_to_binlog] table tb_name [,tb_name]`
+
+​	优化表
+
+​	`optimize table` 只对MyISAM，BDB，InnoDB表起作用
+
+​	**对于MyISAM表，`optimize table`按如下方式操作：**
+
+> 如果表已经被删除或分解了行，则修复表
+>
+> 如果未对索引页进行分类，则进行分类
+>
+> 如果表的统计数据没有更新（并且通过对索引进行分类不能实现修复），则进行更新
+
+==***以上的操作在执行时，都会对表进行锁定***==
+
+> `show table status [like '...'] `
+
+​	查询表状态信息
+
+```shell
+mysql> show table status \G;
+*************************** 1. row ***************************
+           Name: user		#表名称
+         Engine: InnoDB		#存储引擎
+        Version: 10			#版本
+     Row_format: Dynamic	#行格式
+           Rows: 20			#表中行数
+ Avg_row_length: 819		#平均每行包括的字节数
+    Data_length: 16384		#整个表的数据量（byte）
+Max_data_length: 0			#表可以容纳的最大数据量
+   Index_length: 0			#索引占用磁盘的空间大小
+      Data_free: 0			#对于MyISAM引擎，标识已分配，但未使用及已被删除行的空间
+ Auto_increment: 82			#下一个主键值
+    Create_time: 2019-01-27 11:14:53		#表的创建时间
+    Update_time: NULL		#表最近更新时间
+     Check_time: NULL		#使用check table或myisamchk工具检查表的最近时间
+      Collation: utf8_general_ci		#表的默认字符集和字符排序规则
+       Checksum: NULL		#如果开启，则对整个表的内容计算时的校验和
+ Create_options:			#表创建时的其他选项
+        Comment:			#注释信息
+```
+
+#### 表分区
+
+​	当数据量过大时，需要将一张表的数据划分几张表存储。一些查询可以得到极大的优化，这主要借助于满足一个给定where语句的数据可以中保持在一个或多个分区内，这样在查找时就不用查找其他剩余的分区
+
+> `show plugins`
+
+​	是否支持分区，查看当中的partition是否为active
+
+##### 分区创建
+
+**Range分区**
+
+```sql
+partition by range (字段名)( --如果有主键，该字段名必须包含主键
+	partition p1 values less than (11),	--该字段值小于11，为p1分区
+    partition p2 values less than (21),
+	partition p3 values less than (31)
+)	--在insert数据时，不能超过该分区的数值规定
+```
+
+**List分区**
+
+```sql
+partition by list (字段名)( 
+	partition p1 values in (1,3,5,7,9),	
+    partition p2 values less than (2,4,6,8,10),
+	partition p3 values less than (11,13,15,17,18)
+)
+```
+
+**Hash分区**
+
+```sql
+partition by hash(字段名)(
+	partition 4;  	--分成四个区，通过hash得到分区编号；不写则默认为一个分区
+)
+```
+
+**Keys分区**
+
+```sql
+partition by linear key(字段名)(
+	partition 4;  	--分区编号通过2的幂得到；不写则默认为一个分区
+)
+```
+
+##### 分区管理
+
+> `alter table tb_name drop partition prt_name`
+
+​	删除分区，对应分区的内容也会删除
+
+> `alter table tb_name add partition(partition prt_name value less than | in .....)`
+
+​	为range或list分区增加分区
+
+#### 内存优化
+
+#### 应用程序优化
+
+#### 账号权限
+
+#### 监控
+
+#### 定时维护
+
+#### 备份还原
 
 ---
 
