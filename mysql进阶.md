@@ -1051,15 +1051,199 @@ partition by linear key(字段名)(
 
 #### 内存优化
 
+##### myisam内存优化
+
+​	**myisam存储引擎使用key_buffer缓存索引块，加速myisam索引的读写速度。对于myisam表的数据块，mysql没有特别的缓存机制，完全依赖于操作系统的io操作**
+
+> **key_buffer_size**
+
+​	决定myisam索引缓冲区的大小。直接影响myisam表的存取效率。对于一般myisam数据库，建议将1/4可用内存分配给key_buffer_size
+
+> **read_buffer_size**
+
+​	如果需要经常顺序扫描myisam表，可用通过增大该值改善性能。但该值是每个session独占的，如果默认值过大，会造成内存浪费
+
+> **read_md_buffer_size**
+
+​	对于需要排序的myisam表查询，适当增加该值，该值为每个session独占，如果默认值过大，会造成内存浪费
+
+##### innodb内存优化
+
+​	**innodb用一块内存做io缓冲池，该缓冲池用来做缓存innodb的索引块与数据块**
+
+> innodb_buffer_pool_size
+
+​	该变量决定innodb存储引擎表数据和索引数据的最大缓冲区大小
+
+> innodb_log_buffer_size
+
+​	该值决定innodb重做日志缓存的大小，对于可能产生大量更新记录的大事务，增加该值，可以避免innodb在事务提交前就执行不必要的日志写入磁盘操作
+
+##### 并发参数
+
+> max_connections
+
+​	提高并发连接
+
+> thread_cache_size 
+
+​	加快连接数据库的速度，mysql会缓存一定数量的客户服务线程
+
+> innodb_lock_wait_timeout
+
+​	控制innodb事务等待行锁的时间，对于快速处理的sql语句，可以将行锁的等待时间调小，以免事务长时间挂起。对于后台的批量操作，可以调大，以免发生大的回滚操作
+
 #### 应用程序优化
+
+1、访问数据库采用连接池
+
+2、采用缓存减少对mysql访问
+
+​	避免对同一数据做重复检索
+
+​	使用查询缓存
+
+​	缓存参数的配置
+
+> `query_cache_type`：查询该变量，是否开启缓存
+
+> `query_cache_size`：缓存使用的总内存空间大小，单位为字节，该值必须为1024整数倍，否则mysql实际分配可能跟这个数值不同
+
+> `query_cache_limit`：mysql能够缓存的最大结果，如果超过，则不会被cache
+
+> `query_cache_min_res_unit`：分配内存时的最小单位大小 
+
+> `query_cache_wlock_invalidate`：控制当有写锁定发生在表上的时刻是否先失效该表相关的 Query Cache，如果设置为 1(TRUE)，则在写锁定的同时将失效该表相关的所有 Query Cache，如果设置为0(FALSE)则在锁定时刻仍然允许读取该表相关的 Query Cache 
+
+3、负载均衡
 
 #### 账号权限
 
+**查看用户**
+
+```sql
+use mysql;
+select host,user,authentication_string from user;
+```
+
+**赋予/撤销权限**
+
+```sql
+GRANT
+    priv_type [(column_list)]
+      [, priv_type [(column_list)]] ...  --权限类型（all privileges | select | ......）
+    ON [object_type] priv_level   --数据库.表
+    TO user_or_role [, user_or_role] ...
+    [WITH GRANT OPTION]
+----------------------------------------------------
+--CREATE USER 'jeffrey'@'localhost' IDENTIFIED BY 'password'; 创建用户
+grant select on *.* to lov@localhost identified by '123456'with grant option; --新建本地的lov用户并为其赋予所以表的select权限
+---------------------------------------------------
+revoke select *.* from lov@localhost; --撤销给lov的select权限
+```
+
+**查看用户权限**
+
+```shell
+show grants for name@host
+----------------------------------------
+mysql> show grants  for lov@localhost;
++--------------------------------------------------------------------+
+| Grants for lov@localhost                                           |
++--------------------------------------------------------------------+
+| GRANT SELECT, CREATE ON *.* TO 'lov'@'localhost' WITH GRANT OPTION |
++--------------------------------------------------------------------+
+```
+
+**删除用户**
+
+```shell
+#不能直接用delete，这样不会删除权限，如果再新建一个同名用户，会继承权限，应用drop
+drop user  name@host
+```
+
+**修改密码**
+
+```sql
+SET PASSWORD [FOR user] = 'auth_string'
+    [REPLACE 'current_auth_string']
+    [RETAIN CURRENT PASSWORD]
+----------------------------------------------------
+SET PASSWORD FOR 'jeffrey'@'localhost' = 'auth_string';
+```
+
 #### 监控
+
+##### 脚本控制
+
+> `mysqladmin -uroot -p -hlocalhost ping`
+
+​	查看mysql是否可用
+
+> `mysqladmin -uroot -p -hlocalhost status`
+
+​	mysql当前状态值
+
+> `mysqladmin -uroot -p -hlocalhost processlist`
+
+​	数据库当前连接信息
+
+> `mysql -uroot -p -BNe "select host,count(host) from processlist group by host;" information_schema`
+
+​	获取当前数据库的连接数
+
+> `mysqlcheck -uroot -p --all-databases`
+
+​	检查，修复，分析，优化mysql中相关的表
+
+> ` show status like 'Created_tmp%'`
+
+​	用于监控mysql使用临时表的量是否过多，是否有临时表过大而不得不从内存中换出到磁盘文件上
+
+> `show status like '%lock%'`
+
+​	锁定状态：锁定状态包括表锁与行锁，可以通过系统状态变量获取锁定总次数，锁定造成其他线程等待次数，以及锁定等待时间信息
+
+> `show status like 'innodb_log_waits'`
+
+​	innodb_log_waits状态变量直接反应innodb_log_buffer空间不足造成的等待次数
+
+##### 网络监控工具
+
+ 	Cacti，Nagios，Zabbix
 
 #### 定时维护
 
+> `show variables  like 'event_scheduler'`
+
+​	event默认是关闭
+
+> `set global  event_scheduler =1`
+
+​	开启全局event
+
+```shell
+#创建event
+mysql> create event test_event
+    -> on schedule every 1 second 	# 每秒执行一次
+    -> on completion preserve disable	#当completion preserve时：event到期后会被disable，但该event仍然存在；当completion not preserve时：到期后被自动删除
+    -> do call pro();	#执行event时调用方法
+    -> $
+#开启
+mysql> alter event test_event on completion preserve enable;
+#关闭
+mysql> alter event test_event on completion preserve disable;
+```
+
 #### 备份还原
+
+> `mysqldump -uroot -p --databases db_name1 [db_name2 ...] > my_databases.sql`
+
+​	备份
+
+> `mysql -uroot -p  [dbname] < my_databases.sql`
+
+​	从备份恢复
 
 ---
 
